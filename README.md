@@ -1,6 +1,7 @@
 # Spring 2026 DAEN — Flood Early Warning Decision-Support MVP
 
 **Official Repository:** [`yagaC64/Spring2026DAEN`](https://github.com/yagaC64/Spring2026DAEN)
+**Live Dashboard:** [`yagac64.github.io/Spring2026DAEN`](https://yagac64.github.io/Spring2026DAEN/)
 
 **Purpose**
 Deliver an integrated decision-support + data Science/Data Analytics prototype for community flood early warning by turning public data into actionable, defensible insights. The MVP emphasizes a reusable Data-as-a-Service foundation and a mobile-friendly web dashboard (not a native app).
@@ -31,7 +32,37 @@ Deliver an integrated decision-support + data Science/Data Analytics prototype f
 **Execution Notes**
 - Default mode is local (no ArcGIS account required).
 - ArcGIS publishing/sync is enabled only when `USE_ARCGIS=1` plus the corresponding layer ID environment variable is set.
-- Most outputs are written to local `outputs/` folders under `JupyterNotebooks/`.
+- GitHub Pages publishes from `index.html`, which redirects to `noaa_pr_waterlevel_comprehensive.html`.
+- Most pipeline outputs are written to local `outputs/` folders under `JupyterNotebooks/` unless intentionally promoted for publication.
+
+## Repository Tree
+
+```text
+.
+├── .github/workflows/                  # GitHub Pages deployment workflow
+├── config/                             # Versioned executable configuration
+├── data/                               # Local/project data staging
+├── docs/
+│   ├── meetings/                       # Approved publishable meeting records
+│   ├── planning/                       # Scope, requirements, and planning docs
+│   ├── research/                       # Research stacks and question banks
+│   └── specs/                          # Index specs and implementation playbooks
+├── JupyterNotebooks/
+│   ├── index_pipeline/                 # Staged index/scoring notebook pipeline
+│   ├── *.ipynb                         # Source ingest and analysis notebooks
+│   └── outputs/                        # Local/generated notebook outputs
+├── noaa_pr_waterlevel_comprehensive.html  # Published dashboard artifact
+├── index.html                          # GitHub Pages landing redirect
+├── outputs/                            # Local/generated exports and artifacts
+├── sources/
+│   ├── HUMINT/
+│   ├── IMINT/
+│   ├── MASINT/
+│   └── OSINT/
+└── README.md
+```
+
+For a docs-only breakdown, see `docs/README.md`.
 
 ## Index Configuration Skeleton (Executable Spec)
 
@@ -40,7 +71,7 @@ Deliver an integrated decision-support + data Science/Data Analytics prototype f
 - Intended use: notebooks in `JupyterNotebooks/index_pipeline/` load this file instead of hardcoding scoring logic constants in multiple places.
 - Outcome: consistent runs, easier audits, simpler tuning, and cleaner semester-to-semester handoff.
 
-## Index Formula Overview (`PR-Risk-and-Resiliency/JupyterNotebooks/index_pipeline/`)
+## Index Formula Overview (`JupyterNotebooks/index_pipeline/`)
 
 This section documents the implemented formulas used in the staged pipeline at `JupyterNotebooks/index_pipeline/`, including the rationale, operational use, and output artifact.
 
