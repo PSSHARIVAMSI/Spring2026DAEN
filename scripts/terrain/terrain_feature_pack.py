@@ -9,6 +9,7 @@ import logging
 import subprocess
 import sys
 import unicodedata
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -51,6 +52,16 @@ from scipy.ndimage import uniform_filter
 from shapely.ops import unary_union
 
 
+STAGING_SUBDIRS = ["boundaries", "dem", "streams", "coastal", "soils", "land_cover"]
+
+MANUAL_ACTION_GUIDANCE = {
+    "dem": "Download Puerto Rico DEM tiles as GeoTIFF or IMG and place them under data/staging/terrain/dem/.",
+    "streams": "Place a local stream-flowline dataset under data/staging/terrain/streams/ as .gpkg, .geojson, .shp, .zip, or .gdb. The StreamStats webpage alone is not enough for this stage.",
+    "coastal": "Place NOAA Sea Level Rise depth rasters or inundation polygons under data/staging/terrain/coastal/ as .tif, .img, .gpkg, .geojson, .shp, .zip, or .gdb.",
+    "soils": "Place soils under data/staging/terrain/soils/ as .gpkg, .geojson, .shp, .zip, .gdb, .tif, or .img. For vectors, the layer needs a hydrologic-group field such as hydgrpdcd or HYDGROUP.",
+    "land_cover": "Place land-cover rasters under data/staging/terrain/land_cover/ as .tif, .tiff, or .img. NOAA C-CAP fits the default profile best; NLCD Puerto Rico works when the config profile is set or auto-detected.",
+}
+
 FIELD_DESCRIPTIONS = {
     "municipio_id": "Puerto Rico municipio identifier from Census county-equivalent boundaries.",
     "municipio_name": "Municipio name from source boundary layer.",
@@ -91,15 +102,93 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text())
 
 
+def ensure_staging_dirs(repo_root: Path, config: dict[str, Any]) -> list[Path]:
+    staging_dir = repo_root / config["runtime"]["staging_dir"]
+    created = [staging_dir]
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    for name in STAGING_SUBDIRS:
+        path = staging_dir / name
+        path.mkdir(parents=True, exist_ok=True)
+        created.append(path)
+    return created
+
+
 def discover_paths(repo_root: Path, patterns: Iterable[str]) -> list[Path]:
     seen: set[Path] = set()
     matches: list[Path] = []
     for pattern in patterns:
         for match in sorted(repo_root.glob(pattern)):
-            if match.is_file() and match not in seen:
+            if (match.is_file() or match.suffix.lower() == ".gdb") and match not in seen:
                 matches.append(match)
                 seen.add(match)
     return matches
+
+
+def normalize_token(value: str) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def choose_named_candidate(options: Iterable[str], candidates: Iterable[str] | None = None) -> str | None:
+    values = [str(option) for option in options if str(option).strip()]
+    if not values:
+        return None
+    if not candidates:
+        return values[0]
+
+    normalized = [(normalize_token(option), option) for option in values]
+    for candidate in candidates:
+        token = normalize_token(candidate)
+        if not token:
+            continue
+        for option_token, option in normalized:
+            if option_token == token or option_token.endswith(token) or token in option_token:
+                return option
+    return values[0]
+
+
+def list_vector_layers(path: Path) -> list[str]:
+    try:
+        layers = gpd.list_layers(path)
+    except Exception:
+        return []
+    if isinstance(layers, pd.DataFrame) and "name" in layers.columns:
+        return [str(value) for value in layers["name"].tolist() if str(value).strip()]
+    return []
+
+
+def zip_shapefile_targets(path: Path, layer_candidates: Iterable[str] | None = None) -> list[str]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = sorted({name for name in archive.namelist() if name.lower().endswith(".shp")})
+    except zipfile.BadZipFile:
+        return []
+
+    if not members:
+        return []
+
+    chosen = choose_named_candidate([Path(name).stem for name in members], layer_candidates)
+    if chosen is not None:
+        filtered = [name for name in members if Path(name).stem == chosen]
+        if filtered:
+            return [f"zip://{path}!{filtered[0]}"]
+    return [f"zip://{path}!{members[0]}"]
+
+
+def vector_read_targets(
+    path: Path,
+    layer_name: str | None = None,
+    layer_candidates: Iterable[str] | None = None,
+) -> list[tuple[str | Path, str | None]]:
+    suffix = path.suffix.lower()
+    if suffix == ".zip":
+        return [(target, None) for target in zip_shapefile_targets(path, layer_candidates)]
+    if suffix == ".gdb":
+        layers = list_vector_layers(path)
+        if not layers:
+            return []
+        chosen = layer_name or choose_named_candidate(layers, layer_candidates)
+        return [(path, chosen)]
+    return [(path, layer_name)]
 
 
 def warn_and_record(logger: logging.Logger, warnings_list: list[str], message: str) -> None:
@@ -107,12 +196,17 @@ def warn_and_record(logger: logging.Logger, warnings_list: list[str], message: s
     warnings_list.append(message)
 
 
-def read_vector(paths: list[Path], layer_name: str | None = None) -> gpd.GeoDataFrame:
+def read_vector(
+    paths: list[Path],
+    layer_name: str | None = None,
+    layer_candidates: Iterable[str] | None = None,
+) -> gpd.GeoDataFrame:
     frames: list[gpd.GeoDataFrame] = []
     for path in paths:
-        frame = gpd.read_file(path, layer=layer_name) if layer_name else gpd.read_file(path)
-        if len(frame):
-            frames.append(frame)
+        for target, resolved_layer in vector_read_targets(path, layer_name=layer_name, layer_candidates=layer_candidates):
+            frame = gpd.read_file(target, layer=resolved_layer) if resolved_layer else gpd.read_file(target)
+            if len(frame):
+                frames.append(frame)
     if not frames:
         return gpd.GeoDataFrame(geometry=[], crs=None)
     return gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), geometry="geometry", crs=frames[0].crs)
@@ -350,6 +444,68 @@ def load_municipio_boundaries(
     return standardized
 
 
+def extract_integer_codes(array: np.ndarray, max_codes: int = 256) -> set[int]:
+    finite = array[np.isfinite(array)]
+    if finite.size == 0:
+        return set()
+    rounded = np.rint(finite)
+    close_mask = np.isclose(finite, rounded, atol=1e-6)
+    if not np.any(close_mask):
+        return set()
+    values = rounded[close_mask].astype(int)
+    unique = np.unique(values)
+    if unique.size > max_codes:
+        unique = unique[:max_codes]
+    return {int(value) for value in unique.tolist()}
+
+
+def resolve_land_cover_mapping(
+    raster: np.ndarray,
+    lc_cfg: dict[str, Any],
+    logger: logging.Logger,
+    warnings_list: list[str],
+) -> tuple[str, dict[int, float]]:
+    profiles = lc_cfg.get("class_score_profiles")
+    if not profiles:
+        mapping = {int(key): float(value) for key, value in lc_cfg["class_score_mapping"].items()}
+        return "legacy", mapping
+
+    preferred = str(lc_cfg.get("source_profile", "auto"))
+    normalized_profiles = {
+        str(name): {int(key): float(value) for key, value in mapping.items()}
+        for name, mapping in profiles.items()
+    }
+    if preferred != "auto" and preferred in normalized_profiles:
+        return preferred, normalized_profiles[preferred]
+
+    observed = extract_integer_codes(raster)
+    best_name: str | None = None
+    best_match_count = -1
+    best_match_ratio = -1.0
+    for name, mapping in normalized_profiles.items():
+        keys = set(mapping)
+        match_count = len(observed & keys)
+        match_ratio = match_count / max(len(observed), 1)
+        if match_count > best_match_count or (match_count == best_match_count and match_ratio > best_match_ratio):
+            best_name = name
+            best_match_count = match_count
+            best_match_ratio = match_ratio
+
+    min_matches = int(lc_cfg.get("auto_detect_min_matches", 2))
+    if best_name is None or best_match_count < min_matches:
+        fallback_name = choose_named_candidate(normalized_profiles.keys(), ["ccap", "nlcd_pr", "legacy"]) or next(
+            iter(normalized_profiles)
+        )
+        warn_and_record(
+            logger,
+            warnings_list,
+            "Land-cover raster was found, but profile auto-detection was weak; using fallback mapping profile "
+            f"'{fallback_name}'. Update config if results look wrong.",
+        )
+        return fallback_name, normalized_profiles[fallback_name]
+    return best_name, normalized_profiles[best_name]
+
+
 def compute_dem_features(
     municipios: gpd.GeoDataFrame,
     repo_root: Path,
@@ -369,11 +525,20 @@ def compute_dem_features(
         return features
 
     logger.info("Reading %d DEM raster(s)", len(dem_paths))
-    dem, transform, _ = read_projected_raster(
-        dem_paths,
-        config["runtime"]["working_crs"],
-        resampling_name=dem_cfg.get("resampling", "bilinear"),
-    )
+    try:
+        dem, transform, _ = read_projected_raster(
+            dem_paths,
+            config["runtime"]["working_crs"],
+            resampling_name=dem_cfg.get("resampling", "bilinear"),
+        )
+    except Exception as exc:
+        source_summary["dem"] = {
+            "status": "read-error",
+            "paths": [str(path.relative_to(repo_root)) for path in dem_paths],
+            "error": str(exc),
+        }
+        warn_and_record(logger, warnings_list, f"DEM raster was found but could not be read; DEM-derived terrain features will be null. Error: {exc}")
+        return features
     slope = derive_slope_degrees(dem, transform)
     wetness_cfg = config["features"]["wetness_proxy"]
     wetness = derive_wetness_proxy(
@@ -425,7 +590,20 @@ def compute_stream_features(
         warn_and_record(logger, warnings_list, "Stream vector not found; distance-to-stream will be null.")
         return features
 
-    streams = read_vector(stream_paths, layer_name=streams_cfg.get("layer_name"))
+    try:
+        streams = read_vector(
+            stream_paths,
+            layer_name=streams_cfg.get("layer_name"),
+            layer_candidates=streams_cfg.get("layer_candidates"),
+        )
+    except Exception as exc:
+        source_summary["streams"] = {
+            "status": "read-error",
+            "paths": [str(path.relative_to(repo_root)) for path in stream_paths],
+            "error": str(exc),
+        }
+        warn_and_record(logger, warnings_list, f"Stream dataset was found but could not be read; distance-to-stream will be null. Error: {exc}")
+        return features
     if streams.empty:
         source_summary["streams"] = {"status": "empty"}
         warn_and_record(logger, warnings_list, "Stream vector was discovered but contains no features.")
@@ -464,11 +642,20 @@ def compute_coastal_features(
     vector_paths = discover_paths(repo_root, coastal_cfg["vector_patterns"])
 
     if raster_paths:
-        raster, transform, _ = read_projected_raster(
-            raster_paths,
-            config["runtime"]["working_crs"],
-            resampling_name="bilinear",
-        )
+        try:
+            raster, transform, _ = read_projected_raster(
+                raster_paths,
+                config["runtime"]["working_crs"],
+                resampling_name="bilinear",
+            )
+        except Exception as exc:
+            source_summary["coastal"] = {
+                "status": "read-error",
+                "paths": [str(path.relative_to(repo_root)) for path in raster_paths],
+                "error": str(exc),
+            }
+            warn_and_record(logger, warnings_list, f"Coastal raster was found but could not be read; coastal fields will be null. Error: {exc}")
+            return features
         rows = zonal_metric(municipios.geometry, raster, transform, stats=["mean"])
         features["coastal_inundation_depth_mean"] = [row.get("mean", np.nan) for row in rows]
         threshold = float(coastal_cfg["inundation_flag_threshold_m"])
@@ -484,7 +671,20 @@ def compute_coastal_features(
         return features
 
     if vector_paths:
-        coastal = read_vector(vector_paths, layer_name=coastal_cfg.get("vector_layer_name"))
+        try:
+            coastal = read_vector(
+                vector_paths,
+                layer_name=coastal_cfg.get("vector_layer_name"),
+                layer_candidates=coastal_cfg.get("vector_layer_candidates"),
+            )
+        except Exception as exc:
+            source_summary["coastal"] = {
+                "status": "read-error",
+                "paths": [str(path.relative_to(repo_root)) for path in vector_paths],
+                "error": str(exc),
+            }
+            warn_and_record(logger, warnings_list, f"Coastal vector data was found but could not be read; coastal fields will be null. Error: {exc}")
+            return features
         if not coastal.empty:
             if coastal.crs is None:
                 coastal = coastal.set_crs("EPSG:4326")
@@ -538,11 +738,20 @@ def compute_soil_features(
     vector_paths = discover_paths(repo_root, soils_cfg["vector_patterns"])
 
     if raster_paths:
-        raster, transform, _ = read_projected_raster(
-            raster_paths,
-            config["runtime"]["working_crs"],
-            resampling_name="nearest",
-        )
+        try:
+            raster, transform, _ = read_projected_raster(
+                raster_paths,
+                config["runtime"]["working_crs"],
+                resampling_name="nearest",
+            )
+        except Exception as exc:
+            source_summary["soils"] = {
+                "status": "read-error",
+                "paths": [str(path.relative_to(repo_root)) for path in raster_paths],
+                "error": str(exc),
+            }
+            warn_and_record(logger, warnings_list, f"Soil raster was found but could not be read; soil runoff potential will be null. Error: {exc}")
+            return features
         rows = zonal_metric(municipios.geometry, raster, transform, stats=["mean"])
         features["soil_runoff_potential"] = [row.get("mean", np.nan) for row in rows]
         source_summary["soils"] = {
@@ -552,7 +761,20 @@ def compute_soil_features(
         return features
 
     if vector_paths:
-        soils = read_vector(vector_paths, layer_name=soils_cfg.get("vector_layer_name"))
+        try:
+            soils = read_vector(
+                vector_paths,
+                layer_name=soils_cfg.get("vector_layer_name"),
+                layer_candidates=soils_cfg.get("vector_layer_candidates"),
+            )
+        except Exception as exc:
+            source_summary["soils"] = {
+                "status": "read-error",
+                "paths": [str(path.relative_to(repo_root)) for path in vector_paths],
+                "error": str(exc),
+            }
+            warn_and_record(logger, warnings_list, f"Soil vector data was found but could not be read; soil runoff potential will be null. Error: {exc}")
+            return features
         if not soils.empty:
             if soils.crs is None:
                 soils = soils.set_crs("EPSG:4326")
@@ -617,19 +839,45 @@ def compute_land_cover_features(
         warn_and_record(logger, warnings_list, "Land-cover raster not found; runoff modifier will be null.")
         return features
 
-    raster, transform, _ = read_projected_raster(
-        lc_paths,
-        config["runtime"]["working_crs"],
-        resampling_name="nearest",
-    )
+    try:
+        raster, transform, _ = read_projected_raster(
+            lc_paths,
+            config["runtime"]["working_crs"],
+            resampling_name="nearest",
+        )
+    except Exception as exc:
+        source_summary["land_cover"] = {
+            "status": "read-error",
+            "paths": [str(path.relative_to(repo_root)) for path in lc_paths],
+            "error": str(exc),
+        }
+        warn_and_record(logger, warnings_list, f"Land-cover raster was found but could not be read; runoff modifier will be null. Error: {exc}")
+        return features
+    profile_name, mapping = resolve_land_cover_mapping(raster, lc_cfg, logger, warnings_list)
     mapped = np.full(raster.shape, np.nan, dtype="float32")
-    for key, value in lc_cfg["class_score_mapping"].items():
-        mapped[np.isclose(raster, float(key))] = float(value)
+    mapped_count = 0
+    for key, value in mapping.items():
+        mask = np.isclose(raster, float(key))
+        mapped_count += int(mask.sum())
+        mapped[mask] = float(value)
+    if mapped_count == 0:
+        source_summary["land_cover"] = {
+            "status": "unmapped",
+            "paths": [str(path.relative_to(repo_root)) for path in lc_paths],
+            "profile": profile_name,
+        }
+        warn_and_record(
+            logger,
+            warnings_list,
+            f"Land-cover raster was found, but none of its classes matched the configured '{profile_name}' mapping profile.",
+        )
+        return features
     rows = zonal_metric(municipios.geometry, mapped, transform, stats=["mean"])
     features["land_cover_runoff_modifier"] = [row.get("mean", np.nan) for row in rows]
     source_summary["land_cover"] = {
         "status": "local",
         "paths": [str(path.relative_to(repo_root)) for path in lc_paths],
+        "profile": profile_name,
     }
     return features
 
@@ -657,11 +905,83 @@ def compute_quality_scores(base: pd.DataFrame, config: dict[str, Any]) -> pd.Dat
     return base
 
 
+def build_manual_actions_from_statuses(statuses: dict[str, str]) -> list[str]:
+    actions: list[str] = []
+    for dataset in ["dem", "streams", "coastal", "soils", "land_cover"]:
+        status = statuses.get(dataset, "missing")
+        if status == "missing":
+            actions.append(MANUAL_ACTION_GUIDANCE[dataset])
+        elif status == "empty":
+            actions.append(
+                "A local stream dataset was found but had no readable features. Inspect the selected layer or supply a different flowline dataset."
+            )
+        elif status == "missing-field":
+            actions.append(
+                "A soils dataset was found, but no hydrologic-group field matched the configured candidates. Export a layer with hydgrpdcd/HYDGROUP or update config/terrain_spec_v1.yaml."
+            )
+        elif status == "read-error":
+            actions.append(
+                f"A {dataset.replace('_', ' ')} dataset was found but could not be read cleanly. Recheck the file format, unzip archives if needed, or place a different supported file under data/staging/terrain/."
+            )
+        elif status == "unmapped":
+            actions.append(
+                "A land-cover raster was found, but its class codes did not match the selected runoff-mapping profile. Switch the source profile or update the class-score mappings in config/terrain_spec_v1.yaml."
+            )
+    return actions
+
+
+def inventory_dataset(patterns: Iterable[str], repo_root: Path) -> list[str]:
+    return [str(path.relative_to(repo_root)) for path in discover_paths(repo_root, patterns)]
+
+
+def inspect_terrain_inputs(
+    repo_root: Path | None = None,
+    config_path: Path | None = None,
+) -> dict[str, Any]:
+    repo_root = find_repo_root(repo_root)
+    config_path = config_path or (repo_root / "config" / "terrain_spec_v1.yaml")
+    config = read_yaml(config_path)
+    created_dirs = ensure_staging_dirs(repo_root, config)
+
+    boundaries_paths = inventory_dataset(config["boundaries"]["local_patterns"], repo_root)
+    boundary_status = "local" if boundaries_paths else "auto-fetch-on-run"
+    source_inventory = {
+        "boundaries": {
+            "status": boundary_status,
+            "paths": boundaries_paths,
+            "automation": "automated fetch fallback enabled",
+        }
+    }
+
+    for dataset_name in ["dem", "streams", "coastal", "soils", "land_cover"]:
+        dataset_cfg = config["datasets"][dataset_name]
+        patterns: list[str] = []
+        for key in ["local_patterns", "raster_patterns", "vector_patterns"]:
+            patterns.extend(dataset_cfg.get(key, []))
+        discovered = inventory_dataset(patterns, repo_root)
+        source_inventory[dataset_name] = {
+            "status": "local" if discovered else "missing",
+            "paths": discovered,
+            "manual_guidance": MANUAL_ACTION_GUIDANCE[dataset_name],
+        }
+
+    status_map = {name: details["status"] for name, details in source_inventory.items() if name != "boundaries"}
+    return {
+        "config_version": config["version"],
+        "config_path": str(config_path.relative_to(repo_root)),
+        "staging_dir": str((repo_root / config["runtime"]["staging_dir"]).relative_to(repo_root)),
+        "staging_subdirs": [str(path.relative_to(repo_root)) for path in created_dirs[1:]],
+        "sources": source_inventory,
+        "manual_actions": build_manual_actions_from_statuses(status_map),
+    }
+
+
 def write_output_readme(
     output_dir: Path,
     config_path: Path,
     warnings_list: list[str],
     output_files: dict[str, str],
+    manual_actions: list[str],
 ) -> None:
     lines = [
         "# Terrain Feature Pack v1 Outputs",
@@ -697,6 +1017,17 @@ def write_output_readme(
         lines.extend([f"- {message}" for message in warnings_list])
     else:
         lines.append("- No warnings recorded.")
+    lines.extend(
+        [
+            "",
+            "## Manual Follow-Up Actions",
+            "",
+        ]
+    )
+    if manual_actions:
+        lines.extend([f"- {message}" for message in manual_actions])
+    else:
+        lines.append("- No manual follow-up actions were generated for the latest run.")
     (output_dir / "README.md").write_text("\n".join(lines) + "\n")
 
 
@@ -714,6 +1045,8 @@ def run_terrain_feature_pack(
 
     warnings_list: list[str] = []
     source_summary: dict[str, Any] = {}
+    ensure_staging_dirs(repo_root, config)
+    input_inventory = inspect_terrain_inputs(repo_root=repo_root, config_path=config_path)
 
     output_dir = repo_root / config["runtime"]["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -755,6 +1088,8 @@ def run_terrain_feature_pack(
         "geospatial output (GeoJSON)": str(geojson_path.relative_to(repo_root)),
         "run metadata": str(metadata_path.relative_to(repo_root)),
     }
+    source_status_map = {name: details.get("status", "missing") for name, details in source_summary.items()}
+    manual_actions = build_manual_actions_from_statuses(source_status_map)
 
     metadata = {
         "config_version": config["version"],
@@ -762,11 +1097,13 @@ def run_terrain_feature_pack(
         "run_timestamp_utc": run_timestamp,
         "row_count": int(len(terrain)),
         "output_files": output_files,
+        "input_inventory": input_inventory,
         "sources": source_summary,
         "warnings": warnings_list,
+        "manual_actions": manual_actions,
     }
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
-    write_output_readme(output_dir, config_path.relative_to(repo_root), warnings_list, output_files)
+    write_output_readme(output_dir, config_path.relative_to(repo_root), warnings_list, output_files, manual_actions)
 
     logger.info("Terrain feature pack complete: %s", csv_path.relative_to(repo_root))
     return metadata
@@ -777,6 +1114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--repo-root", default=None, help="Optional repo root override.")
     parser.add_argument("--config", default=None, help="Optional path to terrain config YAML.")
     parser.add_argument("--log-level", default="INFO", help="Python logging level.")
+    parser.add_argument("--inspect-only", action="store_true", help="Inspect discovered terrain inputs without running feature generation.")
     return parser.parse_args(argv)
 
 
@@ -784,7 +1122,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     repo_root = Path(args.repo_root).resolve() if args.repo_root else None
     config_path = Path(args.config).resolve() if args.config else None
-    metadata = run_terrain_feature_pack(repo_root=repo_root, config_path=config_path, log_level=args.log_level)
+    if args.inspect_only:
+        metadata = inspect_terrain_inputs(repo_root=repo_root, config_path=config_path)
+    else:
+        metadata = run_terrain_feature_pack(repo_root=repo_root, config_path=config_path, log_level=args.log_level)
     print(json.dumps(metadata, indent=2))
     return 0
 

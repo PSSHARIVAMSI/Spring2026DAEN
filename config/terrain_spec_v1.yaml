@@ -14,8 +14,15 @@ boundaries:
   local_patterns:
     - "data/staging/terrain/boundaries/pr_municipios_boundary.geojson"
     - "data/staging/terrain/boundaries/*.geojson"
+    - "data/staging/terrain/boundaries/**/*.geojson"
     - "data/staging/terrain/boundaries/*.gpkg"
+    - "data/staging/terrain/boundaries/**/*.gpkg"
     - "data/staging/terrain/boundaries/*.shp"
+    - "data/staging/terrain/boundaries/**/*.shp"
+    - "data/staging/terrain/boundaries/*.zip"
+    - "data/staging/terrain/boundaries/**/*.zip"
+    - "data/staging/terrain/boundaries/*.gdb"
+    - "data/staging/terrain/boundaries/**/*.gdb"
   automated_fetch:
     enabled: true
     url: "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip"
@@ -30,7 +37,11 @@ datasets:
     required: false
     local_patterns:
       - "data/staging/terrain/dem/*.tif"
+      - "data/staging/terrain/dem/*.tiff"
+      - "data/staging/terrain/dem/*.img"
       - "data/staging/terrain/dem/**/*.tif"
+      - "data/staging/terrain/dem/**/*.tiff"
+      - "data/staging/terrain/dem/**/*.img"
     preferred_resolution_m: 10
     resampling: "bilinear"
 
@@ -38,20 +49,48 @@ datasets:
     required: false
     local_patterns:
       - "data/staging/terrain/streams/*.gpkg"
+      - "data/staging/terrain/streams/**/*.gpkg"
       - "data/staging/terrain/streams/*.geojson"
+      - "data/staging/terrain/streams/**/*.geojson"
       - "data/staging/terrain/streams/*.shp"
+      - "data/staging/terrain/streams/**/*.shp"
+      - "data/staging/terrain/streams/*.zip"
+      - "data/staging/terrain/streams/**/*.zip"
+      - "data/staging/terrain/streams/*.gdb"
+      - "data/staging/terrain/streams/**/*.gdb"
     layer_name: null
+    layer_candidates:
+      - "NHDFlowline"
+      - "flowline"
+      - "streams"
+      - "stream"
 
   coastal:
     required: false
     raster_patterns:
       - "data/staging/terrain/coastal/*.tif"
+      - "data/staging/terrain/coastal/*.tiff"
+      - "data/staging/terrain/coastal/*.img"
       - "data/staging/terrain/coastal/**/*.tif"
+      - "data/staging/terrain/coastal/**/*.tiff"
+      - "data/staging/terrain/coastal/**/*.img"
     vector_patterns:
       - "data/staging/terrain/coastal/*.gpkg"
+      - "data/staging/terrain/coastal/**/*.gpkg"
       - "data/staging/terrain/coastal/*.geojson"
+      - "data/staging/terrain/coastal/**/*.geojson"
       - "data/staging/terrain/coastal/*.shp"
+      - "data/staging/terrain/coastal/**/*.shp"
+      - "data/staging/terrain/coastal/*.zip"
+      - "data/staging/terrain/coastal/**/*.zip"
+      - "data/staging/terrain/coastal/*.gdb"
+      - "data/staging/terrain/coastal/**/*.gdb"
     vector_layer_name: null
+    vector_layer_candidates:
+      - "inundation"
+      - "slr"
+      - "coastal"
+      - "flood"
     inundation_flag_threshold_m: 0.01
     overlap_flag_threshold_ratio: 0.01
     depth_field_candidates:
@@ -63,12 +102,28 @@ datasets:
     required: false
     raster_patterns:
       - "data/staging/terrain/soils/*.tif"
+      - "data/staging/terrain/soils/*.tiff"
+      - "data/staging/terrain/soils/*.img"
       - "data/staging/terrain/soils/**/*.tif"
+      - "data/staging/terrain/soils/**/*.tiff"
+      - "data/staging/terrain/soils/**/*.img"
     vector_patterns:
       - "data/staging/terrain/soils/*.gpkg"
+      - "data/staging/terrain/soils/**/*.gpkg"
       - "data/staging/terrain/soils/*.geojson"
+      - "data/staging/terrain/soils/**/*.geojson"
       - "data/staging/terrain/soils/*.shp"
+      - "data/staging/terrain/soils/**/*.shp"
+      - "data/staging/terrain/soils/*.zip"
+      - "data/staging/terrain/soils/**/*.zip"
+      - "data/staging/terrain/soils/*.gdb"
+      - "data/staging/terrain/soils/**/*.gdb"
     vector_layer_name: null
+    vector_layer_candidates:
+      - "MUPOLYGON"
+      - "mu_polygon"
+      - "soil"
+      - "soils"
     hydrologic_group_field_candidates:
       - "hydgrpdcd"
       - "HYDGROUP"
@@ -84,29 +139,53 @@ datasets:
     required: false
     local_patterns:
       - "data/staging/terrain/land_cover/*.tif"
+      - "data/staging/terrain/land_cover/*.tiff"
+      - "data/staging/terrain/land_cover/*.img"
       - "data/staging/terrain/land_cover/**/*.tif"
-    class_score_mapping:
-      0: 0.00
-      2: 0.95
-      3: 0.90
-      4: 0.35
-      5: 0.20
-      6: 0.15
-      7: 0.55
-      8: 0.45
-      9: 0.50
-      10: 0.85
-      11: 0.75
-      12: 0.60
-      13: 0.40
-      14: 0.25
-      15: 0.10
-      16: 0.05
-      17: 0.20
-      18: 0.15
-      19: 0.10
-      20: 0.05
-      21: 0.15
+      - "data/staging/terrain/land_cover/**/*.tiff"
+      - "data/staging/terrain/land_cover/**/*.img"
+    source_profile: "auto"
+    auto_detect_min_matches: 2
+    class_score_profiles:
+      ccap:
+        0: 0.00
+        2: 0.95
+        3: 0.90
+        4: 0.35
+        5: 0.20
+        6: 0.15
+        7: 0.55
+        8: 0.45
+        9: 0.50
+        10: 0.85
+        11: 0.75
+        12: 0.60
+        13: 0.40
+        14: 0.25
+        15: 0.10
+        16: 0.05
+        17: 0.20
+        18: 0.15
+        19: 0.10
+        20: 0.05
+        21: 0.15
+      nlcd_pr:
+        11: 0.95
+        12: 0.90
+        21: 0.35
+        22: 0.55
+        23: 0.75
+        24: 0.95
+        31: 0.65
+        41: 0.10
+        42: 0.08
+        43: 0.10
+        52: 0.25
+        71: 0.20
+        81: 0.30
+        82: 0.60
+        90: 0.15
+        95: 0.10
 
 features:
   wetness_proxy:

@@ -7,6 +7,10 @@
 *.swp
 *.swo
 
+# Python cache/build junk
+__pycache__/
+*.py[cod]
+
 # Internal admin documents (local only)
 /docs/intadmin/
 /docs/admin/
