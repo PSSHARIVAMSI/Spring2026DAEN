@@ -20,8 +20,8 @@ Deliver an integrated decision-support + data Science/Data Analytics prototype f
 - Demo-ready storytelling for stakeholders
 
 **Quick Local Start**
-- After cloning, run `./run.sh up` for the fastest local prototype startup path.
-- That workflow creates or reuses a repo-local Python virtual environment at `.venv`, checks and installs the baseline requirements, runs pytest smoke tests, rebuilds the local DuckDB baseline, and starts the local Streamlit prototype.
+- After cloning, run `./run.sh up` for the fastest local workbench startup path.
+- That workflow creates or reuses a repo-local Python virtual environment at `.venv`, checks and installs the baseline requirements, runs pytest smoke tests, rebuilds the local DuckDB baseline, and starts the local Streamlit workbench.
 - `./run.sh` without arguments opens an interactive menu for the same workflow plus status, query, and stop utilities.
 - After startup, the runner can offer to open the local app in the default browser automatically. Inside the Streamlit app, a `Quit Local App` button is available for clean local shutdown.
 - To stop the local app cleanly and free port `8501` for other tools, run `./run.sh stop`. If you need a different port, set `STREAMLIT_PORT` before launch.
@@ -54,7 +54,7 @@ Deliver an integrated decision-support + data Science/Data Analytics prototype f
 ├── .github/workflows/                  # GitHub Pages deployment workflow
 ├── config/                             # Versioned executable configuration
 ├── data/                               # Local/project data staging
-│   └── local/duckdb/                   # Local DuckDB starter baseline artifacts
+│   └── local/duckdb/                   # Local DuckDB workbench artifacts
 ├── docs/
 │   ├── meetings/                       # Approved publishable meeting records
 │   ├── planning/                       # Scope, requirements, and planning docs
@@ -96,32 +96,32 @@ For a docs-only breakdown, see `docs/README.md`.
 - Current automation focuses on source discovery, staging-folder setup, support for `.zip` / `.gdb` / `.img` local inputs, and land-cover profile auto-detection.
 - Intended outputs: `outputs/index_pipeline/15_terrain/municipio_terrain_features.{csv,parquet,geojson}` plus run metadata and a local data dictionary.
 
-## DuckDB + Streamlit Starter Baseline (Local Prototype)
+## PR Hazard and Readiness Analysis Workbench (Local-Only Prototype)
 
 ### Current State
 
 This repository is currently not centered on a formal DuckDB database layer or a deployed Streamlit application. The current MVP remains notebook-first, local-first by default, driven by curated public-data ingest and staged analytics notebooks, and publicly surfaced through the existing GitHub Pages dashboard flow.
 
-For the local prototype baseline, the recommended path after cloning is:
+For the local workbench, the recommended path after cloning is:
 
 ```bash
 ./run.sh up
 ```
 
-That command checks or installs local requirements, runs pytest smoke tests, rebuilds the local DuckDB starter database, and brings the local Streamlit prototype up.
+That command checks or installs local requirements, runs pytest smoke tests, rebuilds the local DuckDB starter database, and brings the local Streamlit workbench up.
 
-### Why Add a DuckDB + Streamlit Baseline?
+### Why Add This Workbench?
 
-A lightweight DuckDB + Streamlit baseline helps future contributors start from a practical local prototype instead of starting from zero. The intent is to complement the current architecture by adding:
+A lightweight DuckDB + Streamlit workbench helps future contributors start from a practical local analysis surface instead of starting from zero. The intent is to complement the current architecture by adding:
 
 - a small local analytical store
 - a repeatable loader from current curated outputs
 - starter views and queries for QA and exploration
 - and a minimal Streamlit shell for local interactive analysis
 
-### What This Baseline Is
+### What This Workbench Is
 
-This baseline is intended to be:
+This workbench is intended to be:
 
 - local-first
 - additive
@@ -129,9 +129,9 @@ This baseline is intended to be:
 - easy to rebuild from current outputs
 - and suitable for extension by future contributors
 
-### What This Baseline Is Not
+### What This Workbench Is Not
 
-This baseline is not:
+This workbench is not:
 
 - a replacement for the current GitHub Pages public dashboard
 - a full production deployment
@@ -157,16 +157,16 @@ Current baseline ingestion targets the most stable local curated outputs current
 
 GeoJSON outputs are inventoried for future map-friendly extensions but are not yet loaded into a spatial database schema.
 
-### Public vs Local Prototype
+### Public vs Local Workbench
 
 - Public today: the current GitHub Pages dashboard flow remains the official public-facing surface.
-- Local/internal prototype: the DuckDB database and Streamlit app are intended for local analytical exploration, QA, and future extension.
+- Local/internal workbench: the DuckDB database and Streamlit app are intended for local analytical exploration, QA, and future extension.
 
 ### Quickstart
 
 1. Clone the repository.
 2. Run `./run.sh up`.
-3. Let the runner create or reuse `.venv`, install requirements if needed, run pytest smoke tests, build the local DuckDB baseline, and launch Streamlit.
+3. Let the runner create or reuse `.venv`, install requirements if needed, run pytest smoke tests, build the local DuckDB baseline, and launch the local workbench.
 4. Use `./run.sh` later for the interactive menu, status checks, rebuilds, queries, optimization, and clean stop actions.
 
 ```bash
@@ -192,7 +192,7 @@ If you want the underlying steps directly, they are still available:
 ### Known Gaps and Next Extensions
 
 - The baseline currently focuses on a small set of stable outputs rather than the full notebook estate.
-- The app is a local prototype shell, not a production deployment target.
+- The app is a local workbench shell, not a production deployment target.
 - GeoJSON sources are inventoried rather than modeled spatially in DuckDB.
 - Natural next candidates for expansion include age, transport/no-vehicle, housing fragility, income/poverty, and future terrain pilot outputs.
 

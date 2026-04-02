@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Local DuckDB + Streamlit prototype runner for Spring2026DAEN.
+# Local DuckDB + Streamlit workbench runner for Spring2026DAEN.
 # This is an additive, local-first helper. It does not replace the
 # notebook-first workflow or the existing GitHub Pages dashboard.
 #
@@ -194,7 +194,7 @@ print_status_row() {
 }
 
 show_status() {
-  log "Gathering local prototype status"
+  log "Gathering local workbench status"
 
   local expected_outputs=(
     "${ROOT_DIR}/JupyterNotebooks/outputs/index_pipeline/30_scoring/municipio_indices_scored.csv"
@@ -383,7 +383,7 @@ run_smoke_tests() {
 
 bring_stack_up() {
   local total_steps=4
-  log "Starting local prototype stack-up workflow"
+  log "Starting local workbench stack-up workflow"
   log "Step 1/${total_steps}: checking or installing requirements"
   ensure_requirements_ready
   log "Step 2/${total_steps}: running pytest smoke tests"
@@ -547,7 +547,7 @@ rotate_log_if_needed() {
 
 main_menu() {
   while true; do
-    printf "\n${C_BOLD}Spring2026DAEN Local Prototype Menu${C_RESET}\n"
+    printf "\n${C_BOLD}PR Hazard and Readiness Analysis Workbench Menu${C_RESET}\n"
     echo "  1. Bring local stack up (recommended)"
     echo "  2. Status check"
     echo "  3. Install/update local baseline dependencies"

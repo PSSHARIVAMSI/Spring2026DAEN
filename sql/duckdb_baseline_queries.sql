@@ -1,4 +1,4 @@
--- DuckDB starter baseline queries for local QA and exploration.
+-- DuckDB workbench queries for local QA and exploration.
 
 -- 1. Top municipios by confidence-adjusted priority.
 SELECT

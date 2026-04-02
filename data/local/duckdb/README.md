@@ -1,6 +1,6 @@
 # DuckDB Local Baseline
 
-This folder is reserved for the local DuckDB starter baseline and related local build artifacts.
+This folder is reserved for the local DuckDB workbench and related local build artifacts.
 
 Expected local files:
 

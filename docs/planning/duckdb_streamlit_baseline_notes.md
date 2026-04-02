@@ -11,11 +11,11 @@
 
 - Which current outputs should be treated as the long-term canonical curated inputs for future database loading?
 - Should future baseline map views move from centroid-style latitude/longitude summaries to polygon-aware geospatial layers?
-- Should a later iteration add a stronger dependency/packaging model for the entire repo instead of only this local prototype baseline?
+- Should a later iteration add a stronger dependency/packaging model for the entire repo instead of only this local workbench?
 - Which additional scoring-support outputs should be promoted next into the baseline schema: age, transport/no-vehicle, housing fragility, or other social indicators?
 
 ## Known Gaps
 
-- The starter baseline is intentionally small and does not model every notebook output.
+- The workbench is intentionally small and does not model every notebook output.
 - GeoJSON sources are inventoried for future extensions but are not yet loaded into a spatial database schema.
-- The Streamlit app is a local prototype shell and not a production deployment target.
+- The Streamlit app is a local workbench shell and not a production deployment target.

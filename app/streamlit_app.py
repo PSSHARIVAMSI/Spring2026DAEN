@@ -63,11 +63,11 @@ DEFAULT_DB_PATH = Path(
     )
 ).expanduser()
 
-st.set_page_config(page_title="Spring2026DAEN Local Prototype", layout="wide")
+st.set_page_config(page_title="PR Hazard and Readiness Analysis Workbench", layout="wide")
 
-st.title("Spring2026DAEN DuckDB + Streamlit Starter Baseline")
+st.title("PR Hazard and Readiness Analysis Workbench")
 st.caption(
-    "Local/internal prototype only. This app complements the notebook-first workflow and does not replace the "
+    "Local/internal workbench only. This app complements the notebook-first workflow and does not replace the "
     "current GitHub Pages public dashboard."
 )
 

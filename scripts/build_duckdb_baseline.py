@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a local DuckDB starter baseline from curated Spring2026DAEN outputs."""
+"""Build a local DuckDB workbench database from curated Spring2026DAEN outputs."""
 
 from __future__ import annotations
 
@@ -611,7 +611,7 @@ def build_duckdb_baseline(repo_root: Path, db_path: Path) -> dict[str, object]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build a local DuckDB starter baseline from current curated outputs.")
+    parser = argparse.ArgumentParser(description="Build the local DuckDB workbench database from current curated outputs.")
     parser.add_argument("--repo-root", default=None, help="Optional repo-root override.")
     parser.add_argument(
         "--db-path",
