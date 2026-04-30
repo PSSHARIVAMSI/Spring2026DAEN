@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'yagaC64/Spring2026DAEN'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
